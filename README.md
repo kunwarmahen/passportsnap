@@ -20,7 +20,8 @@ Create compliant passport photos right in your browser. No appointments, no wait
 
 ### 🎨 Professional Photo Editor
 
-- **Smart positioning guides**: Visual overlays showing exactly where to position your face
+- **One-click Auto Adjust**: Auto-corrects exposure and, where the browser supports face detection, scales and positions your head to the selected country's spec
+- **Country-accurate positioning guides**: The head oval, eye line and chin line are computed from each country's official measurements — they move when you change country
 - **Advanced adjustments**: Brightness, contrast, and color saturation controls
 - **Real-time preview**: See changes instantly as you edit
 - **Zoom & position**: Drag to move, scale slider to resize
@@ -28,13 +29,14 @@ Create compliant passport photos right in your browser. No appointments, no wait
 
 ### 📐 Intelligent Guidelines
 
-- **Head oval guide**: Shows optimal face area (50-69% coverage)
-- **Eye level indicator**: Precise horizontal line for eye positioning
-- **Chin level marker**: Ensures proper facial framing
+Guidelines are **derived from each country's real passport specification**, not fixed positions, so they accurately reflect that country's head-size and eye-position requirements:
+
+- **Head oval guide**: Sized to the country's required chin-to-crown head height (e.g. 50–69% for the US, 70–80% for India)
+- **Eye level indicator**: Horizontal line at the country's required eye height
+- **Chin & crown markers**: Computed from the head height and eye line
 - **Center alignment**: Vertical line for symmetrical positioning
 - **Measurement rulers**: Percentage-based side scales
-- **Top of head marker**: Shows where crown should be
-- **Shoulder guide**: Proper shoulder positioning
+- **Country-correct background**: White or light-grey fill applied per the destination's rules
 - **Color-coded system**: Each guideline has a distinct purpose
 
 ### 🖨️ Print-Ready Output
@@ -106,14 +108,15 @@ npm run build
 
 ### Step 2: Edit
 
-1. **Position**: Drag the photo to move it around
-2. **Zoom**: Use the scale slider to resize (0.1x to 3x)
-3. **Adjust colors**:
+1. **Auto Adjust (recommended first step)**: Click **Auto Adjust Photo** to fix exposure and fit your head to the selected country's spec. In browsers with face detection (e.g. Chromium-based), it also positions your eyes on the eye line automatically.
+2. **Position**: Drag the photo to move it around
+3. **Zoom**: Use the scale slider to resize (1.0× fits the frame; range 0.4×–3×, fine 0.01 steps)
+4. **Adjust colors**:
    - Brightness (50-150%)
    - Contrast (50-150%)
    - Saturation (0-200%)
-4. **Use guidelines**: Toggle guides on/off to see positioning helpers
-5. **Align properly**:
+5. **Use guidelines**: Toggle guides on/off to see positioning helpers
+6. **Align properly** (guides reflect your selected country):
    - Center face on vertical line
    - Eyes at teal line
    - Chin at rose line
@@ -128,20 +131,22 @@ npm run build
 
 ---
 
-## 🎯 Supported Countries & Dimensions
+## 🎯 Supported Countries & Specifications
 
-| Country           | Dimensions             | Aspect Ratio |
-| ----------------- | ---------------------- | ------------ |
-| 🇺🇸 United States  | 2" × 2" (600×600px)    | 1:1          |
-| 🇨🇦 Canada         | 2" × 2" (600×600px)    | 1:1          |
-| 🇬🇧 United Kingdom | 2" × 2.5" (600×750px)  | 4:5          |
-| 🇦🇺 Australia      | 2" × 2.5" (600×750px)  | 4:5          |
-| 🇮🇳 India          | 2" × 2" (600×600px)    | 1:1          |
-| 🇨🇳 China          | 2" × 2.67" (600×800px) | 3:4          |
-| 🇩🇪 Germany        | 2" × 2.5" (600×750px)  | 4:5          |
-| 🇫🇷 France         | 2" × 2.5" (600×750px)  | 4:5          |
+Each country uses its **own physical size, head-height range, eye position and background** — these are not interchangeable. The US and India are both 2"×2", but India requires a much larger head (70–80% vs 50–69%), so the guides and output differ accordingly.
 
-All photos are generated at **300 DPI** for professional print quality.
+| Country           | Size (mm) | Pixels @300DPI | Head Height (chin→crown) | Background |
+| ----------------- | --------- | -------------- | ------------------------ | ---------- |
+| 🇺🇸 United States  | 51 × 51   | 602 × 602      | 50–69%                   | White      |
+| 🇨🇦 Canada         | 50 × 70   | 591 × 827      | 44–51% (31–36 mm)        | White      |
+| 🇬🇧 United Kingdom | 35 × 45   | 413 × 531      | 64–76% (29–34 mm)        | Light grey |
+| 🇦🇺 Australia      | 35 × 45   | 413 × 531      | 71–80% (32–36 mm)        | White      |
+| 🇮🇳 India          | 51 × 51   | 602 × 602      | 70–80%                   | White      |
+| 🇨🇳 China          | 33 × 48   | 390 × 567      | 58–69% (28–33 mm)        | White      |
+| 🇩🇪 Germany        | 35 × 45   | 413 × 531      | 71–80% (32–36 mm)        | Light grey |
+| 🇫🇷 France         | 35 × 45   | 413 × 531      | 71–80% (32–36 mm)        | Light grey |
+
+Pixel sizes are computed from the physical millimetre dimensions at **300 DPI** for professional print quality.
 
 ---
 
@@ -215,29 +220,39 @@ passportsnap/
 
 ### Adding New Countries
 
+Define the country's **real specification**. The pixel size and all guides are derived automatically from these values:
+
 ```javascript
 const countries = [
   {
     code: "XX",
     name: "Country Name",
-    size: { width: 600, height: 600 },
     flag: "🏴",
+    widthMM: 35, // physical photo width in millimetres
+    heightMM: 45, // physical photo height in millimetres
+    head: [0.71, 0.8], // chin-to-crown head height as a fraction of photo height
+    eyeLine: 0.45, // eye position as a fraction from the top
+    bg: "#ffffff", // required background colour
+    note: "35×45 mm. Head 32–36 mm. White background.",
   },
   // Add more countries...
 ];
 ```
 
-### Customizing Guidelines
+### How Guidelines Are Computed
 
-Modify the guideline positions in the editor section:
+You no longer hand-place the guides — they are generated from each country's
+`head` range and `eyeLine` in the `guides` memo:
 
 ```javascript
-// Eye level position (percentage from top)
-style={{ top: '28%', left: '5%', width: '90%' }}
-
-// Chin level position
-style={{ top: '65%', left: '5%', width: '90%' }}
+const headAvg = (head[0] + head[1]) / 2;
+const crown = eyeLine - 0.45 * headAvg; // top-of-head marker
+const chin = eyeLine + 0.55 * headAvg; // chin marker
+// Oval width assumes a face ~0.72× as wide as the head is tall
 ```
+
+Change a country's `head`/`eyeLine` values and the oval, eye line and chin line
+update automatically.
 
 ### Adjusting Print Layout
 
@@ -346,9 +361,10 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ### Version 1.1 (Coming Soon)
 
+- [x] Auto face detection and positioning (one-click Auto Adjust, where the browser supports the FaceDetector API)
 - [ ] More country templates (Japan, Brazil, South Korea)
 - [ ] Background removal tool
-- [ ] Auto face detection and positioning
+- [ ] Bundled face-detection model for full cross-browser support
 - [ ] Dark mode support
 
 ### Version 1.2

@@ -1,4 +1,4 @@
-import React, { useState, useRef, useCallback, useEffect } from "react";
+import React, { useState, useRef, useCallback, useEffect, useMemo } from "react";
 import {
   Upload,
   Download,
@@ -35,65 +35,165 @@ const PassportPhotoApp = () => {
   const [isProcessing, setIsProcessing] = useState(false);
   const [error, setError] = useState(null);
   const [openFAQ, setOpenFAQ] = useState(null);
+  const [isAdjusting, setIsAdjusting] = useState(false);
+  const [autoMessage, setAutoMessage] = useState(null);
 
   const fileInputRef = useRef(null);
   const canvasRef = useRef(null);
   const previewCanvasRef = useRef(null);
   const printCanvasRef = useRef(null);
 
+  // Print resolution: 300 dots per inch (1 inch = 25.4 mm)
+  const PX_PER_MM = 300 / 25.4;
+  const mmToPx = (mm) => Math.round(mm * PX_PER_MM);
+
+  // Each country defines its OFFICIAL requirements, not just a pixel size:
+  //  - widthMM / heightMM: physical photo size
+  //  - head: [min, max] chin-to-crown height as a fraction of the photo height
+  //  - eyeLine: where the eyes should sit, as a fraction from the top
+  //  - bg: required background colour
+  // These values come from each government's passport photo specification and
+  // are what make the guides (and the requirements) genuinely differ per country.
   const countries = [
     {
       code: "US",
       name: "United States",
-      size: { width: 600, height: 600 },
       flag: "🇺🇸",
+      widthMM: 51,
+      heightMM: 51,
+      head: [0.5, 0.69],
+      eyeLine: 0.4,
+      bg: "#ffffff",
+      note: '2×2 in. Head 25–35 mm (50–69% of height), eyes 28–35 mm from bottom. Plain white background.',
     },
     {
       code: "CA",
       name: "Canada",
-      size: { width: 600, height: 600 },
       flag: "🇨🇦",
+      widthMM: 50,
+      heightMM: 70,
+      head: [0.44, 0.51],
+      eyeLine: 0.42,
+      bg: "#ffffff",
+      note: '50×70 mm. Face (chin to crown) 31–36 mm — a notably smaller head than US/UK. Plain white background.',
     },
     {
       code: "UK",
       name: "United Kingdom",
-      size: { width: 600, height: 750 },
       flag: "🇬🇧",
+      widthMM: 35,
+      heightMM: 45,
+      head: [0.64, 0.76],
+      eyeLine: 0.45,
+      bg: "#f3f4f0",
+      note: '35×45 mm. Head (crown to chin) 29–34 mm (64–76%). Light grey / cream background.',
     },
     {
       code: "AU",
       name: "Australia",
-      size: { width: 600, height: 750 },
       flag: "🇦🇺",
+      widthMM: 35,
+      heightMM: 45,
+      head: [0.71, 0.8],
+      eyeLine: 0.45,
+      bg: "#ffffff",
+      note: '35×45 mm. Face length 32–36 mm (71–80%). Plain white or light grey background.',
     },
     {
       code: "IN",
       name: "India",
-      size: { width: 600, height: 600 },
       flag: "🇮🇳",
+      widthMM: 51,
+      heightMM: 51,
+      head: [0.7, 0.8],
+      eyeLine: 0.42,
+      bg: "#ffffff",
+      note: '2×2 in (51×51 mm). Face must fill 70–80% of the frame — much larger than the US head size. White background.',
     },
     {
       code: "CN",
       name: "China",
-      size: { width: 600, height: 800 },
       flag: "🇨🇳",
+      widthMM: 33,
+      heightMM: 48,
+      head: [0.58, 0.69],
+      eyeLine: 0.45,
+      bg: "#ffffff",
+      note: '33×48 mm. Head 28–33 mm tall, 15–22 mm wide. White background.',
     },
     {
       code: "DE",
       name: "Germany",
-      size: { width: 600, height: 750 },
       flag: "🇩🇪",
+      widthMM: 35,
+      heightMM: 45,
+      head: [0.71, 0.8],
+      eyeLine: 0.45,
+      bg: "#f3f4f0",
+      note: '35×45 mm (Schengen/ICAO). Head 32–36 mm (71–80%). Light grey background.',
     },
     {
       code: "FR",
       name: "France",
-      size: { width: 600, height: 750 },
       flag: "🇫🇷",
+      widthMM: 35,
+      heightMM: 45,
+      head: [0.71, 0.8],
+      eyeLine: 0.45,
+      bg: "#f3f4f0",
+      note: '35×45 mm (Schengen/ICAO). Head 32–36 mm (71–80%). Light grey background.',
     },
   ];
 
   const currentCountry = countries.find((c) => c.code === country);
-  const passportSize = currentCountry.size;
+
+  const passportSize = useMemo(
+    () => ({
+      width: mmToPx(currentCountry.widthMM),
+      height: mmToPx(currentCountry.heightMM),
+    }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [country]
+  );
+
+  // Derive the on-screen guide geometry from the country's real spec so the
+  // oval, eye line and chin line always match that country's requirements.
+  const guides = useMemo(() => {
+    const headAvg = (currentCountry.head[0] + currentCountry.head[1]) / 2;
+    const eye = currentCountry.eyeLine;
+    // Eyes sit roughly 45% of the way down the head (crown -> chin).
+    const crown = eye - 0.45 * headAvg;
+    const chin = eye + 0.55 * headAvg;
+    // A typical adult face is ~0.72 as wide as it is tall (chin to crown).
+    const faceWidthPx = 0.72 * headAvg * passportSize.height;
+    const ovalWidthPct = faceWidthPx / passportSize.width;
+    return {
+      headAvg,
+      eye,
+      crown: Math.max(0.02, crown),
+      chin: Math.min(0.98, chin),
+      ovalWidth: ovalWidthPct,
+      ovalLeft: 0.5 - ovalWidthPct / 2,
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [country, passportSize]);
+
+  const pct = (v) => `${(v * 100).toFixed(1)}%`;
+  const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
+
+  // The zoom slider is a multiplier relative to this baseline, NOT the raw
+  // image pixels. baseScale makes the source photo "cover" the frame at zoom=1,
+  // so the slider behaves the same whether the upload is 800px or 6000px wide.
+  const baseScale = useMemo(() => {
+    if (!image) return 1;
+    return Math.max(
+      passportSize.width / image.width,
+      passportSize.height / image.height
+    );
+  }, [image, passportSize]);
+
+  // Actual scale applied when drawing = baseline cover scale × user zoom.
+  const effectiveScale = baseScale * scale;
 
   const handleFileUpload = async (event) => {
     const file = event.target.files[0];
@@ -186,13 +286,13 @@ const PassportPhotoApp = () => {
     canvas.width = passportSize.width;
     canvas.height = passportSize.height;
 
-    ctx.fillStyle = "white";
+    ctx.fillStyle = currentCountry.bg;
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
     ctx.filter = `brightness(${brightness}%) contrast(${contrast}%) saturate(${saturation}%)`;
 
-    const scaledWidth = image.width * scale;
-    const scaledHeight = image.height * scale;
+    const scaledWidth = image.width * effectiveScale;
+    const scaledHeight = image.height * effectiveScale;
 
     ctx.drawImage(
       image,
@@ -210,29 +310,44 @@ const PassportPhotoApp = () => {
       previewCanvas.height = passportSize.height;
       previewCtx.drawImage(canvas, 0, 0);
     }
-  }, [image, brightness, contrast, saturation, scale, position, passportSize]);
+  }, [
+    image,
+    brightness,
+    contrast,
+    saturation,
+    effectiveScale,
+    position,
+    passportSize,
+    currentCountry.bg,
+  ]);
 
   useEffect(() => {
     applyFilters();
   }, [applyFilters]);
 
+  // The canvas is displayed smaller than its internal resolution (max-w-full),
+  // so convert pointer movement from CSS pixels into canvas pixels, otherwise
+  // dragging moves the photo far less than the cursor and feels stuck.
+  const pointerToCanvas = (e) => {
+    const canvas = previewCanvasRef.current;
+    const rect = canvas.getBoundingClientRect();
+    return {
+      x: (e.clientX - rect.left) * (canvas.width / rect.width),
+      y: (e.clientY - rect.top) * (canvas.height / rect.height),
+    };
+  };
+
   const handleMouseDown = (e) => {
     if (!image) return;
     setIsDragging(true);
-    const rect = previewCanvasRef.current.getBoundingClientRect();
-    setDragStart({
-      x: e.clientX - rect.left - position.x,
-      y: e.clientY - rect.top - position.y,
-    });
+    const p = pointerToCanvas(e);
+    setDragStart({ x: p.x - position.x, y: p.y - position.y });
   };
 
   const handleMouseMove = (e) => {
     if (!isDragging || !image) return;
-    const rect = previewCanvasRef.current.getBoundingClientRect();
-    setPosition({
-      x: e.clientX - rect.left - dragStart.x,
-      y: e.clientY - rect.top - dragStart.y,
-    });
+    const p = pointerToCanvas(e);
+    setPosition({ x: p.x - dragStart.x, y: p.y - dragStart.y });
   };
 
   const handleMouseUp = () => {
@@ -245,6 +360,104 @@ const PassportPhotoApp = () => {
     setSaturation(100);
     setScale(1);
     setPosition({ x: 0, y: 0 });
+    setAutoMessage(null);
+  };
+
+  // Sample the image at low resolution to pick sensible exposure values.
+  const computeAutoLevels = (img) => {
+    const w = 80;
+    const h = Math.max(1, Math.round((80 * img.height) / img.width));
+    const c = document.createElement("canvas");
+    c.width = w;
+    c.height = h;
+    const cx = c.getContext("2d");
+    cx.drawImage(img, 0, 0, w, h);
+    const data = cx.getImageData(0, 0, w, h).data;
+    const lum = [];
+    let sum = 0;
+    for (let i = 0; i < data.length; i += 4) {
+      const l = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
+      lum.push(l);
+      sum += l;
+    }
+    const mean = sum / lum.length;
+    lum.sort((a, b) => a - b);
+    const at = (q) => lum[clamp(Math.round(q * lum.length), 0, lum.length - 1)];
+    const spread = Math.max(1, at(0.95) - at(0.05));
+    return {
+      brightness: Math.round(clamp((128 / Math.max(1, mean)) * 100, 70, 140)),
+      contrast: Math.round(clamp((200 / spread) * 100, 85, 135)),
+    };
+  };
+
+  // One-click auto adjust: fixes exposure, and (where the browser supports the
+  // FaceDetector API) scales + positions the photo so the head fills the
+  // country's required proportion with the eyes on the eye line.
+  const autoAdjust = async () => {
+    if (!image) return;
+    setIsAdjusting(true);
+    setAutoMessage(null);
+
+    const { brightness: b, contrast: c } = computeAutoLevels(image);
+    setBrightness(b);
+    setContrast(c);
+    setSaturation(100);
+
+    let face = null;
+    if (typeof window.FaceDetector !== "undefined") {
+      try {
+        const detector = new window.FaceDetector({
+          maxDetectedFaces: 1,
+          fastMode: true,
+        });
+        const faces = await detector.detect(image);
+        if (faces && faces.length) face = faces[0].boundingBox;
+      } catch (e) {
+        face = null;
+      }
+    }
+
+    const W = passportSize.width;
+    const H = passportSize.height;
+
+    const targetHeadPx = guides.headAvg * H;
+
+    if (face) {
+      // Detector boxes cover roughly forehead-to-chin (~78% of the full head),
+      // so expand to estimate the full crown-to-chin head height.
+      const fullHeadImgPx = face.height / 0.78;
+      // Convert the required absolute draw scale into a zoom multiplier so it
+      // stays in sync with the slider (zoom = drawScale / baseScale).
+      const zoom = clamp(targetHeadPx / fullHeadImgPx / baseScale, 0.4, 3);
+      const eff = baseScale * zoom;
+
+      const faceCenterX = face.x + face.width / 2;
+      const eyeImgY = face.y + 0.4 * face.height; // eyes ~40% down the face box
+
+      const newX = W / 2 - (W - image.width * eff) / 2 - faceCenterX * eff;
+      const newY =
+        guides.eye * H - (H - image.height * eff) / 2 - eyeImgY * eff;
+
+      setScale(parseFloat(zoom.toFixed(2)));
+      setPosition({ x: Math.round(newX), y: Math.round(newY) });
+      setAutoMessage("Face detected — head, eye line and exposure auto-set.");
+    } else {
+      // Fallback: assume a centred portrait where the head is ~45% of the frame
+      // and scale so it meets the country's head size, then centre it.
+      const assumedHeadFraction = 0.45;
+      const zoom = clamp(
+        targetHeadPx / (assumedHeadFraction * image.height) / baseScale,
+        0.4,
+        3
+      );
+      setScale(parseFloat(zoom.toFixed(2)));
+      setPosition({ x: 0, y: 0 });
+      setAutoMessage(
+        "Exposure and size auto-set. Face detection isn't available in this browser — drag to fine-tune the position."
+      );
+    }
+
+    setIsAdjusting(false);
   };
 
   const extractFaceArea = () => {
@@ -256,13 +469,13 @@ const PassportPhotoApp = () => {
     extractCanvas.width = passportSize.width;
     extractCanvas.height = passportSize.height;
 
-    ctx.fillStyle = "white";
+    ctx.fillStyle = currentCountry.bg;
     ctx.fillRect(0, 0, extractCanvas.width, extractCanvas.height);
 
     ctx.filter = `brightness(${brightness}%) contrast(${contrast}%) saturate(${saturation}%)`;
 
-    const scaledWidth = image.width * scale;
-    const scaledHeight = image.height * scale;
+    const scaledWidth = image.width * effectiveScale;
+    const scaledHeight = image.height * effectiveScale;
 
     ctx.drawImage(
       image,
@@ -701,6 +914,9 @@ const PassportPhotoApp = () => {
                   >
                     {c.name}
                   </div>
+                  <div className="text-xs text-gray-400 mt-1">
+                    {c.widthMM}×{c.heightMM} mm
+                  </div>
                 </button>
               ))}
             </div>
@@ -887,13 +1103,6 @@ const PassportPhotoApp = () => {
                   width={passportSize.width}
                   height={passportSize.height}
                   className="border-2 border-gray-200 rounded-xl cursor-move max-w-full h-auto shadow-inner"
-                  style={{
-                    background: canvasRef.current
-                      ? `url(${canvasRef.current.toDataURL()})`
-                      : "white",
-                    backgroundSize: "cover",
-                    backgroundPosition: "center",
-                  }}
                   onMouseDown={handleMouseDown}
                   onMouseMove={handleMouseMove}
                   onMouseUp={handleMouseUp}
@@ -923,35 +1132,40 @@ const PassportPhotoApp = () => {
                       <div className="w-full h-1 bg-emerald-500 ml-auto mt-auto"></div>
                     </div>
 
-                    {/* Head oval guide */}
+                    {/* Head oval guide — sized from the country's real spec */}
                     <div
                       className="absolute border-2 border-amber-400 rounded-full bg-amber-400/5"
                       style={{
-                        left: "20%",
-                        top: "12%",
-                        width: "60%",
-                        height: "65%",
+                        left: pct(guides.ovalLeft),
+                        top: pct(guides.crown),
+                        width: pct(guides.ovalWidth),
+                        height: pct(guides.chin - guides.crown),
                       }}
                     >
                       <div className="absolute -top-8 left-1/2 transform -translate-x-1/2 bg-amber-500 text-white text-xs px-3 py-1.5 rounded-full font-semibold whitespace-nowrap shadow-lg">
-                        Head Position (50-69%)
+                        Head ({Math.round(currentCountry.head[0] * 100)}–
+                        {Math.round(currentCountry.head[1] * 100)}%)
                       </div>
                     </div>
 
-                    {/* Shoulders guide line */}
+                    {/* Top of head (crown) marker */}
                     <div
-                      className="absolute border-t-2 border-cyan-400"
-                      style={{ bottom: "15%", left: "10%", width: "80%" }}
+                      className="absolute border-t-2 border-purple-400 border-dashed"
+                      style={{
+                        top: pct(guides.crown),
+                        left: pct(guides.ovalLeft),
+                        width: pct(guides.ovalWidth),
+                      }}
                     >
-                      <div className="absolute -bottom-7 left-0 bg-cyan-500 text-white text-xs px-3 py-1 rounded-full font-medium whitespace-nowrap shadow-md">
-                        Shoulders
+                      <div className="absolute -top-7 left-1/2 transform -translate-x-1/2 bg-purple-500 text-white text-xs px-3 py-1 rounded-full font-medium whitespace-nowrap shadow-md">
+                        Top of Head
                       </div>
                     </div>
 
                     {/* Eye level horizontal line */}
                     <div
                       className="absolute border-t-2 border-teal-400 border-dashed"
-                      style={{ top: "28%", left: "5%", width: "90%" }}
+                      style={{ top: pct(guides.eye), left: "5%", width: "90%" }}
                     >
                       <div className="absolute -top-7 right-0 bg-teal-500 text-white text-xs px-3 py-1.5 rounded-full font-semibold whitespace-nowrap shadow-lg flex items-center">
                         <div className="w-1.5 h-1.5 bg-white rounded-full mr-1.5"></div>
@@ -962,7 +1176,7 @@ const PassportPhotoApp = () => {
                     {/* Chin level line */}
                     <div
                       className="absolute border-t-2 border-rose-400 border-dashed"
-                      style={{ top: "65%", left: "5%", width: "90%" }}
+                      style={{ top: pct(guides.chin), left: "5%", width: "90%" }}
                     >
                       <div className="absolute -bottom-7 right-0 bg-rose-500 text-white text-xs px-3 py-1 rounded-full font-medium whitespace-nowrap shadow-md">
                         Chin Level
@@ -974,16 +1188,6 @@ const PassportPhotoApp = () => {
                       className="absolute border-l-2 border-emerald-400 border-dashed opacity-50"
                       style={{ left: "50%", top: "5%", height: "90%" }}
                     ></div>
-
-                    {/* Top of head marker */}
-                    <div
-                      className="absolute border-t-2 border-purple-400 border-dashed"
-                      style={{ top: "8%", left: "25%", width: "50%" }}
-                    >
-                      <div className="absolute -top-7 left-1/2 transform -translate-x-1/2 bg-purple-500 text-white text-xs px-3 py-1 rounded-full font-medium whitespace-nowrap shadow-md">
-                        Top of Head
-                      </div>
-                    </div>
 
                     {/* Center crosshair with enhanced styling */}
                     <div className="absolute inset-0 flex items-center justify-center">
@@ -1056,7 +1260,8 @@ const PassportPhotoApp = () => {
                         <div className="flex items-center space-x-2">
                           <div className="w-3 h-3 bg-amber-400 rounded-sm"></div>
                           <span className="text-gray-700 font-medium">
-                            Head in oval (50-69%)
+                            Head in oval ({Math.round(currentCountry.head[0] * 100)}–
+                            {Math.round(currentCountry.head[1] * 100)}%)
                           </span>
                         </div>
                         <div className="flex items-center space-x-2">
@@ -1117,6 +1322,44 @@ const PassportPhotoApp = () => {
 
           {/* Controls Sidebar */}
           <div className="space-y-4">
+            {/* Auto Adjust */}
+            <div className="bg-white rounded-2xl shadow-lg p-6">
+              <h3 className="text-lg font-bold text-gray-900 mb-3 flex items-center">
+                <Sparkles className="w-5 h-5 mr-2 text-emerald-600" />
+                Auto Adjust
+              </h3>
+              <p className="text-xs text-gray-600 mb-3">
+                Automatically fix exposure and fit your head to{" "}
+                {currentCountry.name}'s requirements.
+              </p>
+              <button
+                onClick={autoAdjust}
+                disabled={isAdjusting}
+                className="w-full flex items-center justify-center px-4 py-3 bg-gradient-to-r from-emerald-600 to-teal-600 text-white rounded-lg font-bold hover:from-emerald-700 hover:to-teal-700 transition-all shadow-md disabled:opacity-60"
+              >
+                {isAdjusting ? (
+                  <>
+                    <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white mr-2"></div>
+                    Adjusting...
+                  </>
+                ) : (
+                  <>
+                    <Sparkles className="w-5 h-5 mr-2" />
+                    Auto Adjust Photo
+                  </>
+                )}
+              </button>
+              {autoMessage && (
+                <p className="text-xs text-emerald-700 bg-emerald-50 rounded-lg p-2 mt-3">
+                  {autoMessage}
+                </p>
+              )}
+              <div className="mt-3 flex items-start space-x-2 text-xs text-gray-500">
+                <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5 text-gray-400" />
+                <span>{currentCountry.note}</span>
+              </div>
+            </div>
+
             {/* Position & Scale */}
             <div className="bg-white rounded-2xl shadow-lg p-6">
               <h3 className="text-lg font-bold text-gray-900 mb-4 flex items-center">
@@ -1129,18 +1372,21 @@ const PassportPhotoApp = () => {
                     Zoom Level
                   </label>
                   <span className="text-sm font-bold text-emerald-600">
-                    {scale.toFixed(1)}x
+                    {scale.toFixed(2)}x
                   </span>
                 </div>
                 <input
                   type="range"
-                  min="0.1"
+                  min="0.4"
                   max="3"
-                  step="0.1"
+                  step="0.01"
                   value={scale}
                   onChange={(e) => setScale(parseFloat(e.target.value))}
                   className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-emerald-600"
                 />
+                <p className="text-xs text-gray-400 mt-1">
+                  1.0× fits the frame • drag the photo to position it
+                </p>
               </div>
             </div>
 
