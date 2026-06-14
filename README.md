@@ -31,7 +31,7 @@ Create compliant passport photos right in your browser. No appointments, no wait
 
 Guidelines are **derived from each country's real passport specification**, not fixed positions, so they accurately reflect that country's head-size and eye-position requirements:
 
-- **Head oval guide**: Sized to the country's required chin-to-crown head height (e.g. 50–69% for the US, 70–80% for India)
+- **Head oval guide**: Sized to the country's required chin-to-crown head height (e.g. 50–69% for the US, 74–84% for India)
 - **Eye level indicator**: Horizontal line at the country's required eye height
 - **Chin & crown markers**: Computed from the head height and eye line
 - **Center alignment**: Vertical line for symmetrical positioning
@@ -133,7 +133,7 @@ npm run build
 
 ## 🎯 Supported Countries & Specifications
 
-Each country uses its **own physical size, head-height range, eye position and background** — these are not interchangeable. The US and India are both 2"×2", but India requires a much larger head (70–80% vs 50–69%), so the guides and output differ accordingly.
+Each country uses its **own physical size, head-height range, eye position and background** — these are not interchangeable. For example the US is 51×51 mm with a 50–69% head, while India is 35×45 mm requiring a much larger head (74–84%), so the guides and output differ accordingly.
 
 | Country           | Size (mm) | Pixels @300DPI | Head Height (chin→crown) | Background |
 | ----------------- | --------- | -------------- | ------------------------ | ---------- |
@@ -141,7 +141,7 @@ Each country uses its **own physical size, head-height range, eye position and b
 | 🇨🇦 Canada         | 50 × 70   | 591 × 827      | 44–51% (31–36 mm)        | White      |
 | 🇬🇧 United Kingdom | 35 × 45   | 413 × 531      | 64–76% (29–34 mm)        | Light grey |
 | 🇦🇺 Australia      | 35 × 45   | 413 × 531      | 71–80% (32–36 mm)        | White      |
-| 🇮🇳 India          | 51 × 51   | 602 × 602      | 70–80%                   | White      |
+| 🇮🇳 India          | 35 × 45   | 413 × 531      | 74–84% (34–38 mm)        | White      |
 | 🇨🇳 China          | 33 × 48   | 390 × 567      | 58–69% (28–33 mm)        | White      |
 | 🇩🇪 Germany        | 35 × 45   | 413 × 531      | 71–80% (32–36 mm)        | Light grey |
 | 🇫🇷 France         | 35 × 45   | 413 × 531      | 71–80% (32–36 mm)        | Light grey |
